@@ -1,0 +1,17 @@
+services:
+  fatebook_beeminder_bridge:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fatebook_beeminder_bridge
+    environment:
+      - RUST_LOG=info
+    env_file:
+      - .env
+    networks:
+      - sgodilla-network
+    restart: unless-stopped
+
+networks:
+  sgodilla-network:
+    driver: bridge
