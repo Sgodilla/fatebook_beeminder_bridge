@@ -1,7 +1,9 @@
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use log::{error, info};
-use mongodb::{bson::doc, Client as MongoClient, Collection};
+use mongodb::{
+    bson::{doc, DateTime},
+    Client as MongoClient, Collection,
+};
 use reqwest::Client;
 use serde::Deserialize;
 use std::env;
@@ -11,9 +13,8 @@ use uuid::Uuid;
 struct Question {
     id: String,
     title: String,
-    resolve_by: Option<DateTime<Utc>>,
-    resolved: bool,
-    resolved_at: Option<DateTime<Utc>>,
+    resolve_by: Option<DateTime>,
+    resolved_at: Option<DateTime>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -58,8 +59,8 @@ async fn main() -> Result<()> {
     info!("Fetched {} questions", resp.items.len());
 
     for q in resp.items {
-        if let Some(deadline) = q.resolveBy {
-            if Utc::now() >= deadline {
+        if let Some(deadline) = q.resolve_by {
+            if DateTime::now() >= deadline {
                 // Check if already processed
                 let existing = processed_coll
                     .find_one(doc! { "question_id": &q.id })
@@ -98,13 +99,10 @@ async fn main() -> Result<()> {
 
                 // Mark processed
                 processed_coll
-                    .insert_one(
-                        doc! {
-                            "question_id": &q.id,
-                            "processed_at": Utc::now()
-                        },
-                        None,
-                    )
+                    .insert_one(doc! {
+                        "question_id": &q.id,
+                        "processed_at": DateTime::now()
+                    })
                     .await?;
             } else {
                 info!("Question {} not yet due (deadline: {})", &q.id, &deadline);
@@ -118,7 +116,7 @@ async fn main() -> Result<()> {
 }
 
 async fn check_completion_logic(_q: &Question) -> bool {
-    _q.resolved_at < _q.resolve_by
+    _q.resolved_at.is_some() && _q.resolved_at.unwrap() < _q.resolve_by.unwrap()
 }
 
 async fn post_beeminder_datapoint(
@@ -143,12 +141,13 @@ async fn post_beeminder_datapoint(
     ];
 
     let resp = http.post(&url).form(&params).send().await?;
+    let resp_status = &resp.status();
 
-    if resp.status().is_success() {
+    if resp_status.is_success() {
         info!("Posted datapoint value={} comment={}", value, comment);
     } else {
         let body = resp.text().await?;
-        error!("Error posting to Beeminder: {} => {}", resp.status(), body);
+        error!("Error posting to Beeminder: {} => {}", resp_status, body);
     }
 
     Ok(())
