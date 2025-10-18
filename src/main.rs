@@ -13,7 +13,9 @@ use uuid::Uuid;
 struct Question {
     id: String,
     title: String,
+    #[serde(rename = "resolveBy")]
     resolve_by: Option<DateTime>,
+    #[serde(rename = "resolvedAt")]
     resolved_at: Option<DateTime>,
 }
 
@@ -27,6 +29,15 @@ async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     env_logger::init();
 
+    loop {
+        if let Err(e) = run_once().await {
+            error!("Run failed: {:?}", e);
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+    }
+}
+
+async fn run_once() -> Result<()> {
     let fatebook_api_key = env::var("FATEBOOK_API_KEY")?;
     let beeminder_auth = env::var("BEEMINDER_AUTH_TOKEN")?;
     let beeminder_user = env::var("BEEMINDER_USER")?;
