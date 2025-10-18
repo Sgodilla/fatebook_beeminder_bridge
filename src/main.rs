@@ -1,7 +1,7 @@
 use anyhow::Result;
 use log::{error, info};
 use mongodb::{
-    bson::{doc, DateTime},
+    bson::{doc, DateTime as BsonDateTime, Document},
     Client as MongoClient, Collection,
 };
 use reqwest::Client;
@@ -9,14 +9,17 @@ use serde::Deserialize;
 use std::env;
 use uuid::Uuid;
 
+use chrono::{DateTime as ChronoDateTime, Utc};
+
 #[derive(Debug, Deserialize)]
 struct Question {
     id: String,
     title: String,
     #[serde(rename = "resolveBy")]
-    resolve_by: Option<DateTime>,
+    resolve_by: Option<ChronoDateTime<Utc>>,
     #[serde(rename = "resolvedAt")]
-    resolved_at: Option<DateTime>,
+    resolved_at: Option<ChronoDateTime<Utc>>,
+    // You can add more fields as needed (e.g., `resolved: bool`)
 }
 
 #[derive(Debug, Deserialize)]
@@ -50,7 +53,7 @@ async fn run_once() -> Result<()> {
     info!("Connecting to MongoDB at {}", &mongo_uri);
     let mongo_client = MongoClient::with_uri_str(&mongo_uri).await?;
     let db = mongo_client.database(&mongo_dbname);
-    let processed_coll: Collection<mongodb::bson::Document> = db.collection(&processed_coll_name);
+    let processed_coll: Collection<Document> = db.collection(&processed_coll_name);
 
     let http = Client::new();
 
@@ -58,9 +61,9 @@ async fn run_once() -> Result<()> {
     let resp = http
         .get("https://fatebook.io/api/v0/getQuestions")
         .query(&[
-            ("apiKey", &fatebook_api_key),
-            ("readyToResolve", &String::from("true")),
-            ("unresolved", &String::from("true")),
+            ("apiKey", fatebook_api_key.as_str()),
+            ("readyToResolve", "true"),
+            ("unresolved", "true"),
         ])
         .send()
         .await?
@@ -72,7 +75,7 @@ async fn run_once() -> Result<()> {
 
     for q in resp.items {
         if let Some(deadline) = q.resolve_by {
-            if DateTime::now() >= deadline {
+            if Utc::now() >= deadline {
                 // Check if already processed
                 let existing = processed_coll
                     .find_one(doc! { "question_id": &q.id })
@@ -84,7 +87,7 @@ async fn run_once() -> Result<()> {
 
                 info!("Processing question {}: {}", &q.id, &q.title);
 
-                // Logic to determine if prediction was completed
+                // Determine if prediction was completed before (or at) the deadline
                 let succeeded = check_completion_logic(&q).await;
 
                 if succeeded {
@@ -98,6 +101,7 @@ async fn run_once() -> Result<()> {
                     )
                     .await?;
                 } else {
+                    // If you prefer to skip failures entirely, comment this out.
                     post_beeminder_datapoint(
                         &http,
                         &beeminder_user,
@@ -113,7 +117,7 @@ async fn run_once() -> Result<()> {
                 processed_coll
                     .insert_one(doc! {
                         "question_id": &q.id,
-                        "processed_at": DateTime::now()
+                        "processed_at": BsonDateTime::now()
                     })
                     .await?;
             } else {
@@ -127,8 +131,11 @@ async fn run_once() -> Result<()> {
     Ok(())
 }
 
-async fn check_completion_logic(_q: &Question) -> bool {
-    _q.resolved_at.is_some() && _q.resolved_at.unwrap() < _q.resolve_by.unwrap()
+async fn check_completion_logic(q: &Question) -> bool {
+    match (q.resolved_at, q.resolve_by) {
+        (Some(resolved_at), Some(resolve_by)) => resolved_at <= resolve_by,
+        _ => false,
+    }
 }
 
 async fn post_beeminder_datapoint(
@@ -153,13 +160,13 @@ async fn post_beeminder_datapoint(
     ];
 
     let resp = http.post(&url).form(&params).send().await?;
-    let resp_status = &resp.status();
+    let status = resp.status();
 
-    if resp_status.is_success() {
+    if status.is_success() {
         info!("Posted datapoint value={} comment={}", value, comment);
     } else {
-        let body = resp.text().await?;
-        error!("Error posting to Beeminder: {} => {}", resp_status, body);
+        let body = resp.text().await.unwrap_or_else(|_| "<no body>".into());
+        error!("Error posting to Beeminder: {} => {}", status, body);
     }
 
     Ok(())

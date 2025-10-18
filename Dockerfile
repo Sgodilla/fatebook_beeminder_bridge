@@ -31,7 +31,8 @@ WORKDIR /app
 COPY --from=builder --chown=daemo:daemo /usr/src/app/target/release/fatebook_beeminder_bridge /app/fatebook_beeminder_bridge
 
 # Set default environment variables
-ENV RUST_LOG=info
+ENV RUST_LOG=fatebook_beeminder_bridge=debug,reqwest=info
+
 
 # BEST PRACTICE: Switch to the non-root user
 USER sgodilla
