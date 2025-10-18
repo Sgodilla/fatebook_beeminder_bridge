@@ -11,9 +11,9 @@ use uuid::Uuid;
 struct Question {
     id: String,
     title: String,
-    resolveBy: Option<DateTime<Utc>>,
+    resolve_by: Option<DateTime<Utc>>,
     resolved: bool,
-    // you may add other fields you care about
+    resolved_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -46,8 +46,8 @@ async fn main() -> Result<()> {
         .get("https://fatebook.io/api/v0/getQuestions")
         .query(&[
             ("apiKey", &fatebook_api_key),
-            ("readyToResolve", "true"),
-            ("unresolved", "true"),
+            ("readyToResolve", &String::from("true")),
+            ("unresolved", &String::from("true")),
         ])
         .send()
         .await?
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
             if Utc::now() >= deadline {
                 // Check if already processed
                 let existing = processed_coll
-                    .find_one(doc! { "question_id": &q.id }, None)
+                    .find_one(doc! { "question_id": &q.id })
                     .await?;
                 if existing.is_some() {
                     info!("Question {} already processed, skipping", &q.id);
@@ -71,7 +71,7 @@ async fn main() -> Result<()> {
 
                 info!("Processing question {}: {}", &q.id, &q.title);
 
-                // Your logic to determine if prediction was completed
+                // Logic to determine if prediction was completed
                 let succeeded = check_completion_logic(&q).await;
 
                 if succeeded {
@@ -118,9 +118,7 @@ async fn main() -> Result<()> {
 }
 
 async fn check_completion_logic(_q: &Question) -> bool {
-    // TODO: plug in your logic to determine completion of the prediction.
-    // e.g., query your task tracker, check a flag, etc.
-    false
+    _q.resolved_at < _q.resolve_by
 }
 
 async fn post_beeminder_datapoint(
