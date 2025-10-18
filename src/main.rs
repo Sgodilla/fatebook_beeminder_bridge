@@ -24,6 +24,7 @@ struct GetQuestionsResponse {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    dotenvy::dotenv().ok();
     env_logger::init();
 
     let fatebook_api_key = env::var("FATEBOOK_API_KEY")?;
