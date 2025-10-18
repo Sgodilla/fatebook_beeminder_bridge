@@ -1,41 +1,34 @@
-# Build stage
-FROM rust:1-bookworm as builder
-
+# ---------- Build stage ----------
+FROM rust:1-bookworm AS builder
 WORKDIR /usr/src/app
 
-# Copy manifests first for better caching
+# Copy manifests first (layer-cached dependency resolve)
 COPY Cargo.toml Cargo.lock ./
 
-# Create a dummy main.rs to build dependencies
-RUN mkdir src && \
-    echo "fn main() {println!(\"if you see this, the build broke\")}" > src/main.rs && \
-    cargo build --release && \
-    rm -rf src
-
-# Now copy actual source code
+# Copy source
 COPY src ./src
 
-# Build for release
+# Build (use --locked if you want Cargo.lock enforced)
 RUN cargo build --release
 
-# --- Runtime stage ---
+# ---------- Runtime stage ----------
 FROM debian:bookworm-slim
 
-# BEST PRACTICE: Create a non-root user to run the application
+# Non-root user
 RUN groupadd --system --gid 1001 sgodilla && \
-    useradd --system --uid 1001 --gid sgodilla sgodilla
+    useradd  --system --uid 1001 --gid 1001 sgodilla
+
+# HTTPS certs + timezone info
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy the built binary and set ownership to the new user
-COPY --from=builder --chown=daemo:daemo /usr/src/app/target/release/fatebook_beeminder_bridge /app/fatebook_beeminder_bridge
+# Copy the built binary (adjust name if your crate/binary name differs)
+COPY --from=builder --chown=1001:1001 /usr/src/app/target/release/fatebook_beeminder_bridge /app/bridge
 
-# Set default environment variables
-ENV RUST_LOG=fatebook_beeminder_bridge=debug,reqwest=info
+# Default logs (can be overridden by compose)
+ENV RUST_LOG=info
 
-
-# BEST PRACTICE: Switch to the non-root user
 USER sgodilla
-
-# Run the binary
-CMD ["/app/daemo-engine"]
+CMD ["/app/bridge"]

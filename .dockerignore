@@ -1,0 +1,9 @@
+# keep src/ !!
+target
+.git
+.gitignore
+Dockerfile
+docker-compose.yml
+*.log
+.env
+**/*.rs.bk

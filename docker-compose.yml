@@ -4,14 +4,13 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: fatebook_beeminder_bridge
-    environment:
-      - RUST_LOG=fatebook_beeminder_bridge=debug,reqwest=info
-
     env_file:
       - .env
+    environment:
+      - RUST_LOG=fatebook_beeminder_bridge=debug,reqwest=info
+    restart: unless-stopped
     networks:
       - sgodilla-network
-    restart: unless-stopped
 
 networks:
   sgodilla-network:
