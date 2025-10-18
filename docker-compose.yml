@@ -7,7 +7,6 @@ services:
     env_file:
       - .env
     environment:
-      # Override/augment defaults if you like:
       - RUST_LOG=fatebook_beeminder_bridge=debug,reqwest=info
     restart: unless-stopped
     networks:
